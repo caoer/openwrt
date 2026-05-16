@@ -25,14 +25,32 @@ diffconfig:
 save-config:
     ./scripts/diffconfig.sh > nix/config/seed.config
 
-# Copy baked config files into build tree (applied at image creation)
+# Copy all baked files into build tree (applied at image creation)
 bake-config:
-    rm -rf files/etc/config
-    mkdir -p files/etc/config
-    cp nix/files/etc/config/* files/etc/config/
+    rm -rf files
+    cp -a nix/files files
+    chmod +x files/etc/init.d/* 2>/dev/null || true
 
-# Build with baked config
-build-full jobs="$(nproc)": bake-config
+# Fetch EasyTier aarch64 binary into baked files
+fetch-easytier version="2.6.4":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p nix/files/usr/sbin
+    if [ -x nix/files/usr/sbin/easytier-core ]; then
+        echo "easytier-core already present, skipping download"
+        exit 0
+    fi
+    echo "Downloading EasyTier v{{version}} for aarch64..."
+    curl -fSL "https://github.com/EasyTier/EasyTier/releases/download/v{{version}}/easytier-linux-aarch64-v{{version}}.zip" -o /tmp/easytier-aarch64.zip
+    cd /tmp && unzip -o easytier-aarch64.zip
+    cp /tmp/easytier-linux-aarch64/easytier-core nix/files/usr/sbin/easytier-core
+    cp /tmp/easytier-linux-aarch64/easytier-cli nix/files/usr/sbin/easytier-cli
+    chmod +x nix/files/usr/sbin/easytier-core nix/files/usr/sbin/easytier-cli
+    rm -rf /tmp/easytier-aarch64.zip /tmp/easytier-linux-aarch64
+    echo "EasyTier binaries installed to nix/files/usr/sbin/"
+
+# Build with baked config + easytier
+build-full jobs="$(nproc)": fetch-easytier bake-config
     make -j{{jobs}} V=s
 
 # Flash firmware to target (fire-and-forget, agent-safe)
