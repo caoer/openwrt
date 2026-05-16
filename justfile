@@ -48,12 +48,12 @@ flash target=default_target:
     echo "Target:   root@{{target}}"
     echo ""
     echo "Uploading..."
-    scp "$FW" "root@{{target}}:/tmp/firmware.bin"
+    scp -O "$FW" "root@{{target}}:/tmp/firmware.bin"
     echo "Verifying image integrity..."
     ssh -o ConnectTimeout=10 "root@{{target}}" "sysupgrade -T /tmp/firmware.bin"
     echo ""
     echo "Scheduling sysupgrade (fire-and-forget)..."
-    ssh -o ConnectTimeout=10 "root@{{target}}" 'nohup sh -c "sleep 3 && sysupgrade -n /tmp/firmware.bin" >/dev/null 2>&1 &'
+    ssh -o ConnectTimeout=10 "root@{{target}}" 'printf "#!/bin/sh\nsleep 5\nsysupgrade -n /tmp/firmware.bin\n" > /tmp/do-upgrade.sh && chmod +x /tmp/do-upgrade.sh && /tmp/do-upgrade.sh </dev/null >/dev/null 2>&1 &'
     echo "Sysupgrade scheduled. Waiting 120s for reboot..."
     sleep 120
     echo "Checking if device is back..."
@@ -68,7 +68,7 @@ pull-config target=default_target:
     #!/usr/bin/env bash
     set -euo pipefail
     for f in network wireless firewall dhcp system; do
-        scp "root@{{target}}:/etc/config/$f" "nix/files/etc/config/$f"
+        scp -O "root@{{target}}:/etc/config/$f" "nix/files/etc/config/$f"
         echo "Pulled: $f"
     done
     echo "Done. Config files updated in nix/files/etc/config/"
