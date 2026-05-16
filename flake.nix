@@ -1,5 +1,9 @@
 {
   description = "OpenWrt build environment for GL-MT3600BE (patched mt76)";
+  # NOTE: devShell provides host deps for fresh machines only.
+  # Do NOT mix nix develop with an existing native build_dir —
+  # the different host toolchain will segfault cached binaries.
+  # On machines with build-essential already installed, run `just build` directly.
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
