@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+
+START=98
+USE_PROCD=1
+
+CONF="/tmp/sing-box/config.json"
+FALLBACK="/etc/sing-box/config.json"
+
+start_service() {
+    local cfg
+    if [ -f "$CONF" ]; then
+        cfg="$CONF"
+    elif [ -f "$FALLBACK" ]; then
+        cfg="$FALLBACK"
+    else
+        logger -t singbox "no config found, not starting"
+        return 1
+    fi
+
+    mkdir -p /tmp/sing-box
+
+    procd_open_instance singbox
+    procd_set_param command /usr/sbin/sing-box run -c "$cfg"
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}

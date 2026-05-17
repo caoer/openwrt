@@ -1,0 +1,37 @@
+{
+  "log": { "level": "warn" },
+  "dns": {
+    "servers": [
+      { "tag": "local", "type": "udp", "server": "223.5.5.5", "server_port": 53 }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "auto_route": true,
+      "strict_route": false,
+      "stack": "system",
+      "address": ["172.19.0.0/16"],
+      "route_exclude_address": [
+        "10.144.144.0/24",
+        "64.186.233.167/32",
+        "23.252.105.155/32",
+        "104.224.152.92/32"
+      ]
+    }
+  ],
+  "outbounds": [
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {
+    "rules": [
+      { "action": "sniff" },
+      { "action": "hijack-dns", "protocol": "dns" },
+      { "action": "route", "outbound": "direct", "ip_is_private": true }
+    ],
+    "final": "direct",
+    "auto_detect_interface": true
+  }
+}

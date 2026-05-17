@@ -1,0 +1,44 @@
+#!/bin/sh
+# Physical switch handler: BTN_0 toggles sing-box transparent proxy.
+# pressed = proxy ON, released = proxy OFF.
+
+[ "$BUTTON" = "BTN_0" ] || exit 0
+
+MESH_URL=$(cat /etc/sing-box/endpoint 2>/dev/null)
+CONF="/tmp/sing-box/config.json"
+LED_BLUE="/sys/class/leds/blue:status"
+LED_WHITE="/sys/class/leds/white:status"
+
+led_proxy() {
+    echo 255 > "$LED_BLUE/brightness"
+    echo 0 > "$LED_WHITE/brightness"
+}
+
+led_direct() {
+    echo 0 > "$LED_BLUE/brightness"
+    echo 255 > "$LED_WHITE/brightness"
+}
+
+fetch_config() {
+    mkdir -p /tmp/sing-box
+    if [ -n "$MESH_URL" ]; then
+        wget -q -O "$CONF.tmp" "$MESH_URL" && mv "$CONF.tmp" "$CONF" && return 0
+        rm -f "$CONF.tmp"
+    fi
+    # fallback to baked config
+    [ -f /etc/sing-box/config.json ] && cp /etc/sing-box/config.json "$CONF"
+}
+
+case "$ACTION" in
+    pressed)
+        logger -t proxy "switch ON — starting transparent proxy"
+        fetch_config
+        /etc/init.d/singbox start
+        led_proxy
+        ;;
+    released)
+        logger -t proxy "switch OFF — stopping transparent proxy"
+        /etc/init.d/singbox stop
+        led_direct
+        ;;
+esac

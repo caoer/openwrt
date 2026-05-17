@@ -1,5 +1,5 @@
-instance_name = "gl-mt3600be"
-hostname = "gl-mt3600be"
+instance_name = "zeratul"
+hostname = "zeratul"
 ipv4 = "10.144.144.140/24"
 dhcp = false
 

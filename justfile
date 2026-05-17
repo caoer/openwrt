@@ -49,8 +49,25 @@ fetch-easytier version="2.6.4":
     rm -rf /tmp/easytier-aarch64.zip /tmp/easytier-linux-aarch64
     echo "EasyTier binaries installed to nix/files/usr/sbin/"
 
-# Build with baked config + easytier
-build-full jobs="$(nproc)": fetch-easytier bake-config
+# Fetch sing-box aarch64 binary from GitHub releases
+fetch-singbox version="1.14.0-alpha.2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p nix/files/usr/sbin
+    if [ -x nix/files/usr/sbin/sing-box ]; then
+        echo "sing-box already present, skipping download"
+        exit 0
+    fi
+    echo "Downloading sing-box v{{version}} for linux-arm64..."
+    curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v{{version}}/sing-box-{{version}}-linux-arm64.tar.gz" -o /tmp/sing-box-arm64.tar.gz
+    tar -xzf /tmp/sing-box-arm64.tar.gz -C /tmp
+    cp "/tmp/sing-box-{{version}}-linux-arm64/sing-box" nix/files/usr/sbin/sing-box
+    chmod +x nix/files/usr/sbin/sing-box
+    rm -rf /tmp/sing-box-arm64.tar.gz "/tmp/sing-box-{{version}}-linux-arm64"
+    echo "sing-box installed to nix/files/usr/sbin/"
+
+# Build with baked config + easytier + singbox
+build-full jobs="$(nproc)": fetch-easytier fetch-singbox bake-config
     make -j{{jobs}} V=s
 
 # Flash firmware to target (fire-and-forget, agent-safe)
