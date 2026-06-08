@@ -1,0 +1,41 @@
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option ula_prefix 'fd76:82d1:3e1a::/48'
+
+# LAN = robot-facing side (eth1 / bridge). Robot plugs in here, gets DHCP,
+# reaches the console at 192.168.8.1. Provision may override LAN_IP per seed.
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth1'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ip6assign '60'
+	list ipaddr '192.168.8.1/24'
+
+# Wired WAN (eth0) — optional alternate uplink, harmless if unplugged.
+config interface 'wan'
+	option device 'eth0'
+	option proto 'dhcp'
+	option metric '20'
+
+config interface 'wan6'
+	option device 'eth0'
+	option proto 'dhcpv6'
+
+# Wireless uplink (5 GHz STA -> upstream AP). Primary uplink for the robot.
+config interface 'wwan'
+	option proto 'dhcp'
+	option metric '10'
+
+# EasyTier mesh tun (locus-mesh). Device name pinned so firewall can scope it.
+config interface 'mesh'
+	option proto 'none'
+	option device 'etmesh'

@@ -1,0 +1,11 @@
+# Per-robot identity seed for the GL robot router.
+# Copy to /etc/glrobot.conf (the provision helper writes this from osfiles inventory).
+# Consumed by /usr/sbin/glrobot-provision on first boot and on manual re-run.
+
+NODE_NAME="eva-46-router"
+MESH_IP="10.144.145.46"
+WIFI_SSID="coScene-Robot"
+WIFI_KEY="99999999"
+
+# Optional: override LAN IP (default 192.168.8.1)
+#LAN_IP="192.168.8.1"

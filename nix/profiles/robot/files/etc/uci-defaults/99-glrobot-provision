@@ -1,0 +1,6 @@
+#!/bin/sh
+# First-boot hook: apply per-robot identity if a seed is present.
+# Returns 0 so uci-defaults removes it after first boot; the provision
+# script stays in /usr/sbin for manual re-runs after seed changes.
+[ -x /usr/sbin/glrobot-provision ] && /usr/sbin/glrobot-provision --boot
+exit 0

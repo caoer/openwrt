@@ -1,4 +1,5 @@
-default_target := "192.168.61.1"
+default_target := "192.168.8.1"
+profile := "robot"
 device := "glinet_gl-mt3600be"
 image_glob := "bin/targets/mediatek/filogic/openwrt-mediatek-filogic-" + device + "-squashfs-sysupgrade.bin"
 
@@ -25,49 +26,50 @@ diffconfig:
 save-config:
     ./scripts/diffconfig.sh > nix/config/seed.config
 
-# Copy all baked files into build tree (applied at image creation)
+# Copy a profile's baked files into build tree (applied at image creation)
 bake-config:
     rm -rf files
-    cp -a nix/files files
-    chmod +x files/etc/init.d/* 2>/dev/null || true
+    cp -a nix/profiles/{{profile}}/files files
+    chmod +x files/etc/init.d/* files/etc/uci-defaults/* files/usr/sbin/* 2>/dev/null || true
 
 # Fetch EasyTier aarch64 binary into baked files
 fetch-easytier version="2.6.4":
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p nix/files/usr/sbin
-    if [ -x nix/files/usr/sbin/easytier-core ]; then
+    mkdir -p nix/profiles/{{profile}}/files/usr/sbin
+    if [ -x nix/profiles/{{profile}}/files/usr/sbin/easytier-core ]; then
         echo "easytier-core already present, skipping download"
         exit 0
     fi
     echo "Downloading EasyTier v{{version}} for aarch64..."
     curl -fSL "https://github.com/EasyTier/EasyTier/releases/download/v{{version}}/easytier-linux-aarch64-v{{version}}.zip" -o /tmp/easytier-aarch64.zip
     cd /tmp && unzip -o easytier-aarch64.zip
-    cp /tmp/easytier-linux-aarch64/easytier-core nix/files/usr/sbin/easytier-core
-    cp /tmp/easytier-linux-aarch64/easytier-cli nix/files/usr/sbin/easytier-cli
-    chmod +x nix/files/usr/sbin/easytier-core nix/files/usr/sbin/easytier-cli
+    cp /tmp/easytier-linux-aarch64/easytier-core nix/profiles/{{profile}}/files/usr/sbin/easytier-core
+    cp /tmp/easytier-linux-aarch64/easytier-cli nix/profiles/{{profile}}/files/usr/sbin/easytier-cli
+    chmod +x nix/profiles/{{profile}}/files/usr/sbin/easytier-core nix/profiles/{{profile}}/files/usr/sbin/easytier-cli
     rm -rf /tmp/easytier-aarch64.zip /tmp/easytier-linux-aarch64
-    echo "EasyTier binaries installed to nix/files/usr/sbin/"
+    echo "EasyTier binaries installed to nix/profiles/{{profile}}/files/usr/sbin/"
 
 # Fetch sing-box aarch64 binary from GitHub releases
 fetch-singbox version="1.14.0-alpha.2":
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p nix/files/usr/sbin
-    if [ -x nix/files/usr/sbin/sing-box ]; then
+    mkdir -p nix/profiles/{{profile}}/files/usr/sbin
+    if [ -x nix/profiles/{{profile}}/files/usr/sbin/sing-box ]; then
         echo "sing-box already present, skipping download"
         exit 0
     fi
     echo "Downloading sing-box v{{version}} for linux-arm64..."
     curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v{{version}}/sing-box-{{version}}-linux-arm64.tar.gz" -o /tmp/sing-box-arm64.tar.gz
     tar -xzf /tmp/sing-box-arm64.tar.gz -C /tmp
-    cp "/tmp/sing-box-{{version}}-linux-arm64/sing-box" nix/files/usr/sbin/sing-box
-    chmod +x nix/files/usr/sbin/sing-box
+    cp "/tmp/sing-box-{{version}}-linux-arm64/sing-box" nix/profiles/{{profile}}/files/usr/sbin/sing-box
+    chmod +x nix/profiles/{{profile}}/files/usr/sbin/sing-box
     rm -rf /tmp/sing-box-arm64.tar.gz "/tmp/sing-box-{{version}}-linux-arm64"
-    echo "sing-box installed to nix/files/usr/sbin/"
+    echo "sing-box installed to nix/profiles/{{profile}}/files/usr/sbin/"
 
-# Build with baked config + easytier + singbox
-build-full jobs="$(nproc)": fetch-easytier fetch-singbox bake-config
+# Build with baked profile config + easytier (robot profile: no singbox).
+# Override profile: `just profile=zeratul build-full` (also fetch-singbox first).
+build-full jobs="$(nproc)": fetch-easytier bake-config
     make -j{{jobs}} V=s
 
 # Flash firmware to target (fire-and-forget, agent-safe)
@@ -103,10 +105,10 @@ pull-config target=default_target:
     #!/usr/bin/env bash
     set -euo pipefail
     for f in network wireless firewall dhcp system; do
-        scp -O "root@{{target}}:/etc/config/$f" "nix/files/etc/config/$f"
+        scp -O "root@{{target}}:/etc/config/$f" "nix/profiles/{{profile}}/files/etc/config/$f"
         echo "Pulled: $f"
     done
-    echo "Done. Config files updated in nix/files/etc/config/"
+    echo "Done. Config files updated in nix/profiles/{{profile}}/files/etc/config/"
 
 # Clean build artifacts
 clean:

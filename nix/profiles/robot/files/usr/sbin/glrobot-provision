@@ -1,0 +1,59 @@
+#!/bin/sh
+# glrobot-provision — apply per-robot identity from /etc/glrobot.conf.
+# Idempotent; safe to re-run. Renders EasyTier config, hostname, STA uplink, LAN IP.
+# Usage: glrobot-provision [--boot]
+#   --boot : first-boot context (from uci-defaults); skip live service reloads.
+
+CONF=/etc/glrobot.conf
+TMPL=/etc/easytier/config.toml.template
+OUT=/etc/easytier/config.toml
+
+log() { logger -t glrobot-provision "$*"; echo "glrobot-provision: $*"; }
+
+if [ ! -f "$CONF" ]; then
+	log "no $CONF — leaving image defaults unprovisioned"
+	exit 0
+fi
+
+# shellcheck disable=SC1090
+. "$CONF"
+
+if [ -z "$NODE_NAME" ] || [ -z "$MESH_IP" ]; then
+	log "ERROR: NODE_NAME and MESH_IP are required in $CONF"
+	exit 1
+fi
+LAN_IP="${LAN_IP:-192.168.8.1}"
+
+# 1. identity: hostname + LAN
+uci -q set system.@system[0].hostname="$NODE_NAME"
+uci -q set network.lan.ipaddr="$LAN_IP"
+
+# 2. EasyTier config from template
+if [ -f "$TMPL" ]; then
+	sed -e "s/@NODE_NAME@/$NODE_NAME/g" -e "s#@MESH_IP@#$MESH_IP#g" "$TMPL" > "$OUT"
+	log "rendered $OUT (node=$NODE_NAME mesh=$MESH_IP)"
+else
+	log "WARN: template $TMPL missing — EasyTier not configured"
+fi
+
+# 3. STA wifi uplink from seed
+if [ -n "$WIFI_SSID" ]; then
+	uci -q set wireless.sta_uplink.ssid="$WIFI_SSID"
+	uci -q set wireless.sta_uplink.key="$WIFI_KEY"
+	uci -q set wireless.sta_uplink.disabled='0'
+	uci -q set wireless.radio1.disabled='0'
+	log "STA uplink -> $WIFI_SSID"
+fi
+
+uci commit
+/etc/init.d/easytier enable 2>/dev/null
+
+# 4. apply live when re-run after boot
+if [ "$1" != "--boot" ]; then
+	/etc/init.d/network reload 2>/dev/null
+	wifi reload 2>/dev/null
+	/etc/init.d/easytier restart 2>/dev/null
+	log "applied live"
+fi
+
+log "provisioned $NODE_NAME"

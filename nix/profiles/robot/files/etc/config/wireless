@@ -1,0 +1,32 @@
+# Robot router radios (mt76 / mac80211). 5 GHz = STA uplink to upstream AP.
+# Provision fills the STA ssid/key from /etc/glrobot.conf and enables it.
+
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option path 'soc/11280000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
+	option radio '0'
+	option band '2g'
+	option channel 'auto'
+	option htmode 'HE40'
+	option country 'US'
+	option disabled '1'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option path 'soc/11280000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
+	option radio '1'
+	option band '5g'
+	option channel 'auto'
+	option htmode 'HE80'
+	option country 'US'
+	option disabled '0'
+
+# STA uplink — disabled until provisioned (ssid/key from seed).
+config wifi-iface 'sta_uplink'
+	option device 'radio1'
+	option mode 'sta'
+	option network 'wwan'
+	option ssid ''
+	option encryption 'psk2'
+	option key ''
+	option disabled '1'
