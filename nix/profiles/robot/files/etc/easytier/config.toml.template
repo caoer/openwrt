@@ -4,7 +4,7 @@
 # Shared mesh secret + peers are baked (same for every robot router).
 instance_name = "@NODE_NAME@"
 hostname = "@NODE_NAME@"
-ipv4 = "@MESH_IP@/24"
+ipv4 = "@MESH_IP@/16"
 dhcp = false
 dev_name = "etmesh"
 
