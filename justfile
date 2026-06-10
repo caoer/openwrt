@@ -43,7 +43,7 @@ fetch-easytier version="2.6.4":
     fi
     echo "Downloading EasyTier v{{version}} for aarch64..."
     curl -fSL "https://github.com/EasyTier/EasyTier/releases/download/v{{version}}/easytier-linux-aarch64-v{{version}}.zip" -o /tmp/easytier-aarch64.zip
-    cd /tmp && unzip -o easytier-aarch64.zip
+    unzip -o /tmp/easytier-aarch64.zip -d /tmp
     cp /tmp/easytier-linux-aarch64/easytier-core nix/profiles/{{profile}}/files/usr/sbin/easytier-core
     cp /tmp/easytier-linux-aarch64/easytier-cli nix/profiles/{{profile}}/files/usr/sbin/easytier-cli
     chmod +x nix/profiles/{{profile}}/files/usr/sbin/easytier-core nix/profiles/{{profile}}/files/usr/sbin/easytier-cli
