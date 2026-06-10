@@ -19,6 +19,10 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in {
           default = pkgs.mkShell {
+            # OpenWrt buildroot manages its own flags; nix cc-wrapper hardening
+            # (-Werror=format-security etc.) breaks host tools like elfutils.
+            hardeningDisable = [ "all" ];
+
             packages = with pkgs; [
               # OpenWrt buildroot host dependencies
               gnumake
