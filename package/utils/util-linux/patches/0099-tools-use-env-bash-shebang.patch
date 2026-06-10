@@ -1,0 +1,16 @@
+Use /usr/bin/env bash in build-time tool scripts.
+
+all_errnos and all_syscalls run during the meson build (generate
+errnos.h / syscalls.h). Hardcoded /bin/bash breaks on hosts without
+it (e.g. NixOS build machines).
+
+--- a/tools/all_errnos
++++ b/tools/all_errnos
+@@ -1 +1 @@
+-#!/bin/bash
++#!/usr/bin/env bash
+--- a/tools/all_syscalls
++++ b/tools/all_syscalls
+@@ -1 +1 @@
+-#!/bin/bash
++#!/usr/bin/env bash
