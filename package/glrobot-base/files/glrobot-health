@@ -1,0 +1,39 @@
+#!/bin/sh
+# glrobot-health — fleet telemetry daemon.
+# Writes a JSON snapshot to /tmp/state/glrobot.json every INTERVAL seconds.
+# Pattern: LEDE autocore (/tmp/state JSON) + fogvdn check_alive (procd respawn).
+
+INTERVAL="${1:-30}"
+STATE_DIR=/tmp/state
+OUT="$STATE_DIR/glrobot.json"
+
+svc_running() {
+	pidof "$1" >/dev/null 2>&1 && echo true || echo false
+}
+
+mkdir -p "$STATE_DIR"
+
+while :; do
+	hostname="$(cat /proc/sys/kernel/hostname)"
+	uptime_s="$(cut -d. -f1 /proc/uptime)"
+	load1="$(cut -d' ' -f1 /proc/loadavg)"
+	mem_avail="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
+	fw="$(. /etc/openwrt_release 2>/dev/null; echo "$DISTRIB_DESCRIPTION")"
+	mesh_ip="$(ip -4 addr show dev easytier 2>/dev/null | awk '/inet /{print $2; exit}')"
+
+	cat > "$OUT.tmp" <<EOF
+{
+  "ts": $(date +%s),
+  "hostname": "$hostname",
+  "fw": "$fw",
+  "uptime_s": ${uptime_s:-0},
+  "load1": ${load1:-0},
+  "mem_avail_kb": ${mem_avail:-0},
+  "mesh_ip": "$mesh_ip",
+  "easytier": $(svc_running easytier-core),
+  "singbox": $(svc_running sing-box)
+}
+EOF
+	mv "$OUT.tmp" "$OUT"
+	sleep "$INTERVAL"
+done

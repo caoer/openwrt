@@ -1,0 +1,29 @@
+#!/bin/sh
+# glrobot-base first-boot defaults — runs once via uci-defaults, deleted on success.
+# Pattern: Lean's LEDE zzz-default-settings (atomic UCI batch + branding).
+
+# Hostname: per-device identity from MAC when image-generic name is in place.
+# Keeps one image servicing the whole fleet.
+hostname="$(uci -q get system.@system[0].hostname)"
+if [ "$hostname" = "gl-robot" ] || [ "$hostname" = "OpenWrt" ]; then
+	mac="$(sed 's/://g' /sys/class/net/eth0/address 2>/dev/null)"
+	suffix="$(printf %s "$mac" | tail -c 4)"
+	[ -n "$suffix" ] && uci set system.@system[0].hostname="gl-robot-${suffix}"
+fi
+
+uci -q batch <<-EOF
+	set system.@system[0].zonename='UTC'
+	set system.@system[0].timezone='UTC'
+	delete system.ntp.server
+	add_list system.ntp.server='time.cloudflare.com'
+	add_list system.ntp.server='time.apple.com'
+	add_list system.ntp.server='0.openwrt.pool.ntp.org'
+	set system.ntp.enabled='1'
+EOF
+uci commit system
+
+# Version branding — mark fleet builds in /etc/openwrt_release
+grep -q 'robot-fleet' /etc/openwrt_release 2>/dev/null || \
+	sed -i "s|^DISTRIB_DESCRIPTION='\(.*\)'|DISTRIB_DESCRIPTION='\1 robot-fleet'|" /etc/openwrt_release
+
+exit 0

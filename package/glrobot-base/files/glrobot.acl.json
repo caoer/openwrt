@@ -1,0 +1,13 @@
+{
+	"glrobot": {
+		"description": "Robot fleet telemetry read access",
+		"read": {
+			"file": {
+				"/tmp/state/glrobot.json": [ "read" ]
+			},
+			"ubus": {
+				"file": [ "read", "stat" ]
+			}
+		}
+	}
+}
