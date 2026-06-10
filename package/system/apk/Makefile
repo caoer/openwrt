@@ -52,7 +52,6 @@ MESON_HOST_VARS+=VERSION=$(PKG_VERSION)
 MESON_VARS+=VERSION=$(PKG_VERSION)
 
 MESON_COMMON_ARGS = \
-	-Db_lto=true \
 	-Ddocs=disabled \
 	-Dhelp=enabled \
 	-Dlua_version=5.1 \
@@ -62,12 +61,17 @@ MESON_COMMON_ARGS = \
 	-Dpython=disabled \
 	-Dtests=disabled
 
+# Host: LTO off — static libapk.a with LTO bytecode breaks under
+# plugin-less host ar/ld (e.g. nix devShell binutils). Target keeps LTO
+# via the OpenWrt toolchain.
 MESON_HOST_ARGS += \
 	$(MESON_COMMON_ARGS) \
+	-Db_lto=false \
 	-Dcrypto_backend=openssl
 
 MESON_ARGS += \
 	$(MESON_COMMON_ARGS) \
+	-Db_lto=true \
 	-Dcrypto_backend=$(BUILD_VARIANT) \
 	-Dminimal=true
 
