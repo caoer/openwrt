@@ -52,6 +52,11 @@
             ];
 
             shellHook = ''
+              # nix stdenv exports toolchain env vars that leak into cross
+              # builds (TF-A reads AS and assembles with raw 'as' + gcc
+              # flags). OpenWrt buildroot sets its own toolchain vars.
+              unset AS LD AR NM RANLIB STRIP OBJCOPY OBJDUMP SIZE
+
               echo "OpenWrt build environment for GL-MT3600BE"
               echo "  nix/config/seed.config — build config (diffconfig format)"
               echo "  nix/files/             — baked-in UCI config overlay"
