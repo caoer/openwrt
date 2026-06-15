@@ -1,0 +1,18 @@
+#!/bin/sh /etc/rc.common
+# Restore the persisted LAN mode (normal|gateway) at boot.
+# Default NORMAL — a freshly-flashed / unprovisioned router is always reachable at
+# 192.168.8.1 for SSH provisioning. Runs after netifd/firewall/dnsmasq are up.
+# Note: the physical switch position is authoritative at runtime (hotplug); at boot
+# we restore the last applied mode. If the device exposes the switch GPIO state at
+# boot, reading it here would make the switch authoritative across power cycles too.
+
+START=44
+
+start() {
+	mode="$(cat /etc/glrobot.mode 2>/dev/null)"
+	case "$mode" in
+		gateway) ;;
+		*) mode=normal ;;
+	esac
+	/usr/sbin/glrobot-mode "$mode" --boot
+}

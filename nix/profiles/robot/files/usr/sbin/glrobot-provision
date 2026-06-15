@@ -1,6 +1,7 @@
 #!/bin/sh
 # glrobot-provision — apply per-robot identity from /etc/glrobot.conf.
-# Idempotent; safe to re-run. Renders EasyTier config, hostname, STA uplink, LAN IP.
+# Idempotent; safe to re-run. Renders EasyTier config, hostname, STA uplink.
+# LAN IP is NOT set here — it is owned by glrobot-mode (normal vs gateway).
 # Usage: glrobot-provision [--boot]
 #   --boot : first-boot context (from uci-defaults); skip live service reloads.
 
@@ -22,11 +23,8 @@ if [ -z "$NODE_NAME" ] || [ -z "$MESH_IP" ]; then
 	log "ERROR: NODE_NAME and MESH_IP are required in $CONF"
 	exit 1
 fi
-LAN_IP="${LAN_IP:-192.168.8.1}"
-
-# 1. identity: hostname + LAN
+# 1. identity: hostname (LAN IP is owned by glrobot-mode, not the seed)
 uci -q set system.@system[0].hostname="$NODE_NAME"
-uci -q set network.lan.ipaddr="$LAN_IP"
 
 # 2. EasyTier config from template
 if [ -f "$TMPL" ]; then

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Physical mode switch (BTN_0 slide switch) toggles the robot router LAN mode.
+#   pressed  (slide -> gateway position) = GATEWAY mode (LAN 192.168.123.1), blue LED
+#   released (slide -> normal  position) = NORMAL  mode (LAN 192.168.8.1),   white LED
+#
+# Modeled on the proven zeratul handler (hotplug.d/button/00-toggle-proxy) on this
+# exact device. If the switch direction is inverted on the golden unit (check
+# `logread | grep glrobot-mode` while flipping), swap the two cases below.
+
+[ "$BUTTON" = "BTN_0" ] || exit 0
+
+case "$ACTION" in
+	pressed)  logger -t glrobot-mode "switch -> GATEWAY"; /usr/sbin/glrobot-mode gateway ;;
+	released) logger -t glrobot-mode "switch -> NORMAL";  /usr/sbin/glrobot-mode normal  ;;
+esac

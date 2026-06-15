@@ -1,0 +1,97 @@
+#!/bin/sh
+# glrobot-mode — switch the robot router between NORMAL and GATEWAY LAN modes.
+#
+#   NORMAL  : LAN 192.168.8.1/24, standard DHCP (.100+).
+#             Provisioning / console default — a fresh router is always reachable here.
+#   GATEWAY : LAN 192.168.123.1/24 — the router becomes the robot internal segment's
+#             gateway (Unitree PCs default-route via .123.1). Adds:
+#               - scoped DHCP .220-.230 (pico gets a dynamic lease; static
+#                 .161/.164/.120 never ask). Router auto-advertised as gateway.
+#               - mesh->LAN SSH DNAT: <router mesh ip>:2222 -> 192.168.123.164:22 (PC2/Orin)
+#               - NTP server on LAN (fixes PC2 cold-boot clock=1970)
+#             Factory net cannot reach the zero-auth DDS segment: wan/wwan->lan is
+#             default-deny (forward REJECT, no wan->lan rule) and never bridged.
+#
+# Driven by the physical mode switch (hotplug.d/button/00-mode-switch) and restored
+# at boot (init.d/glrobot-mode). Idempotent; safe to re-run. LED reflects the mode.
+#
+# Usage: glrobot-mode {normal|gateway} [--boot]
+#   --boot : boot context — skip the network reload when the baked default (normal)
+#            is already live; gateway still applies.
+
+MODE_FILE=/etc/glrobot.mode
+LED_WHITE=/sys/class/leds/white:status   # normal  (verify node name on golden unit)
+LED_BLUE=/sys/class/leds/blue:status     # gateway
+
+# --- mode parameters --------------------------------------------------------
+N_LAN=192.168.8.1
+N_DHCP_START=100
+N_DHCP_LIMIT=150
+
+GW_LAN=192.168.123.1
+GW_DHCP_START=220
+GW_DHCP_LIMIT=11                 # .220 - .230
+GW_MGMT_TARGET=192.168.123.164   # PC2 / Orin NX
+GW_MGMT_PORT=2222                # mesh-side port -> :22 on PC2
+
+log() { logger -t glrobot-mode "$*"; echo "glrobot-mode: $*"; }
+
+set_led() {  # $1 = active color (white|blue); other goes dark. No-op if LEDs absent.
+	for pair in "white:$LED_WHITE" "blue:$LED_BLUE"; do
+		color="${pair%%:*}"; path="${pair#*:}"
+		[ -w "$path/brightness" ] || continue
+		if [ "$color" = "$1" ]; then echo 255 > "$path/brightness"; else echo 0 > "$path/brightness"; fi
+	done
+}
+
+apply_normal() {
+	uci -q batch <<-EOF
+		set network.lan.ipaddr=$N_LAN
+		set dhcp.lan.start=$N_DHCP_START
+		set dhcp.lan.limit=$N_DHCP_LIMIT
+		set system.ntp.enable_server=0
+		delete firewall.glrobot_mgmt_ssh
+	EOF
+}
+
+apply_gateway() {
+	uci -q batch <<-EOF
+		set network.lan.ipaddr=$GW_LAN
+		set dhcp.lan.start=$GW_DHCP_START
+		set dhcp.lan.limit=$GW_DHCP_LIMIT
+		set system.ntp.enable_server=1
+		set firewall.glrobot_mgmt_ssh=redirect
+		set firewall.glrobot_mgmt_ssh.name='glrobot-mesh-ssh-pc2'
+		set firewall.glrobot_mgmt_ssh.src=mesh
+		set firewall.glrobot_mgmt_ssh.src_dport=$GW_MGMT_PORT
+		set firewall.glrobot_mgmt_ssh.dest=lan
+		set firewall.glrobot_mgmt_ssh.dest_ip=$GW_MGMT_TARGET
+		set firewall.glrobot_mgmt_ssh.dest_port=22
+		set firewall.glrobot_mgmt_ssh.proto=tcp
+		set firewall.glrobot_mgmt_ssh.target=DNAT
+	EOF
+}
+
+MODE="$1"
+case "$MODE" in
+	normal)  apply_normal  ;;
+	gateway) apply_gateway ;;
+	*) log "usage: glrobot-mode {normal|gateway} [--boot]"; exit 1 ;;
+esac
+
+uci commit
+echo "$MODE" > "$MODE_FILE"
+[ "$MODE" = gateway ] && set_led blue || set_led white
+
+# Apply live. On boot the baked config is already NORMAL (.8.1) and netifd brought it
+# up, so only GATEWAY needs a reload at boot; NORMAL is a no-op reload we skip.
+if [ "$2" = "--boot" ] && [ "$MODE" = normal ]; then
+	log "mode=normal (boot, baked default — no reload)"
+	exit 0
+fi
+
+/etc/init.d/network reload   2>/dev/null
+/etc/init.d/dnsmasq restart  2>/dev/null
+/etc/init.d/firewall reload  2>/dev/null
+/etc/init.d/sysntpd restart  2>/dev/null
+log "mode=$MODE applied (LAN $([ "$MODE" = gateway ] && echo $GW_LAN || echo $N_LAN))"

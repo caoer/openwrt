@@ -7,5 +7,7 @@ MESH_IP="10.144.145.46"
 WIFI_SSID="coScene-Robot"
 WIFI_KEY="99999999"
 
-# Optional: override LAN IP (default 192.168.8.1)
-#LAN_IP="192.168.8.1"
+# LAN IP is NOT set per-seed — it is owned by the mode switch:
+#   NORMAL  mode = 192.168.8.1   (provisioning/console default)
+#   GATEWAY mode = 192.168.123.1 (robot-segment gateway)
+# Toggle with the physical mode switch (or: glrobot-mode {normal|gateway}).

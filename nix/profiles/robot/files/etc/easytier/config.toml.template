@@ -2,6 +2,11 @@
 # Rendered to /etc/easytier/config.toml by /usr/sbin/glrobot-provision,
 # substituting @NODE_NAME@ and @MESH_IP@ from /etc/glrobot.conf.
 # Shared mesh secret + peers are baked (same for every robot router).
+#
+# Peers = the locus-mesh default join set: tcp+udp to the first 2 bootstrap
+# peers in osfiles/lib/osf/mesh.nix (89.208.247.77, 104.224.152.92).
+# 3rd live bootstrap (64.186.236.100, dmit-us-lax-2) available for redundancy.
+# DO NOT re-add 64.186.233.167 / 23.252.105.155 — PAUSED/dead since 2026-06-07.
 instance_name = "@NODE_NAME@"
 hostname = "@NODE_NAME@"
 ipv4 = "@MESH_IP@/16"
@@ -18,16 +23,16 @@ network_name = "locus-mesh"
 network_secret = "JGT/8a725S3tCwARkbedUyy39br+X+D60jgKhw1bHKo="
 
 [[peer]]
-uri = "tcp://64.186.233.167:11010"
+uri = "tcp://89.208.247.77:11010"
 
 [[peer]]
-uri = "udp://64.186.233.167:11010"
+uri = "udp://89.208.247.77:11010"
 
 [[peer]]
-uri = "tcp://23.252.105.155:11010"
+uri = "tcp://104.224.152.92:11010"
 
 [[peer]]
-uri = "udp://23.252.105.155:11010"
+uri = "udp://104.224.152.92:11010"
 
 [flags]
 default_protocol = "udp"
