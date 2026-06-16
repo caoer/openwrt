@@ -1,0 +1,205 @@
+#!/bin/sh
+#
+# pico-optimize-daemon — auto-optimize PICO headsets that join this router.
+#
+# Watches DHCP leases for new clients, probes SSH on port 2222 (dropbear,
+# started by pico-reroot.sh after root). When a rooted PICO is reachable,
+# applies VR-over-WiFi optimizations over SSH. Skips already-optimized
+# devices for the lifetime of their lease.
+#
+# Runs as a long-lived daemon on the GL-MT3600BE robot router (OpenWrt).
+# All state is in /tmp (RAM) — clean slate on reboot, matching the PICO's
+# own ephemeral root.
+#
+# Optimizations applied (same as pico-optimize.sh, root required):
+#   1. Wi-Fi country -> US  (unlocks UNII-2C/3 + higher TX power)
+#   2. Wi-Fi scan throttle OFF  (kills off-channel dwell VR hitches)
+#   3. Doze whitelist the teleop app
+#   4. UDP rmem_max = 16 MB  (grants the app's 4 MB SO_RCVBUF)
+#
+# Usage:
+#   pico-optimize-daemon              # foreground (logs to stdout + syslog)
+#   pico-optimize-daemon --once       # single scan, no loop
+#
+# Env overrides:
+#   SCAN_INTERVAL=30          # seconds between lease scans (default 30)
+#   SSH_PORT=2222             # dropbear port on PICO
+#   SSH_TIMEOUT=5             # connect timeout seconds
+#   SSH_KEY=/etc/dropbear/dropbear_ed25519_host_key  # router's host key
+#   APP_PKG=com.xrobotoolkit.client
+#   WIFI_COUNTRY=US
+#   RMEM=16777216
+
+set -u
+
+SCAN_INTERVAL="${SCAN_INTERVAL:-30}"
+SSH_PORT="${SSH_PORT:-2222}"
+SSH_TIMEOUT="${SSH_TIMEOUT:-5}"
+APP_PKG="${APP_PKG:-com.xrobotoolkit.client}"
+WIFI_COUNTRY="${WIFI_COUNTRY:-US}"
+RMEM="${RMEM:-16777216}"
+
+STATE_DIR="/tmp/pico-optimize"
+OPTIMIZED_FILE="$STATE_DIR/optimized"
+LEASE_FILE="/tmp/dhcp.leases"
+
+ONCE=0
+[ "${1:-}" = "--once" ] && ONCE=1
+
+# ── logging ────────────────────────────────────────────────────────────────
+
+log()  { logger -t pico-opt "$*"; echo "pico-opt: $*"; }
+logd() { logger -t pico-opt "$*"; }  # daemon-quiet (syslog only in loop)
+
+# ── SSH transport ──────────────────────────────────────────────────────────
+# OpenWrt ships dbclient (dropbear SSH client). Root on pico = no password,
+# key-based auth via the router's host key baked into the PICO's
+# authorized_keys by pico-reroot.sh.
+
+_ssh() {
+	local ip="$1"; shift
+	# -y: accept unknown host keys (pico key changes every re-root)
+	# -T: no PTY (scripted)
+	dbclient -y -T -p "$SSH_PORT" \
+		-o "ConnectTimeout=$SSH_TIMEOUT" \
+		"root@$ip" "$@" 2>/dev/null
+}
+
+# Test if a host is SSH-reachable (fast TCP probe + auth check)
+ssh_probe() {
+	_ssh "$1" "echo ok" | grep -q "ok"
+}
+
+# ── optimization checks ───────────────────────────────────────────────────
+# Returns 0 (true) if all optimizations are already applied.
+# Each check is a single SSH round-trip for speed.
+
+is_optimized() {
+	local ip="$1"
+	local result
+	result=$(_ssh "$ip" "
+		ok=1
+		# 1. country code
+		cc=\$(cmd wifi get-country-code 2>/dev/null)
+		echo \"\$cc\" | grep -q '$WIFI_COUNTRY' || ok=0
+		# 2. scan throttle
+		st=\$(settings get global wifi_scan_throttle_enabled 2>/dev/null)
+		[ \"\$st\" = '0' ] || ok=0
+		# 3. rmem
+		rm=\$(cat /proc/sys/net/core/rmem_max 2>/dev/null)
+		[ \"\${rm:-0}\" -ge $RMEM ] 2>/dev/null || ok=0
+		# 4. doze whitelist
+		dumpsys deviceidle whitelist 2>/dev/null | grep -q '$APP_PKG' || ok=0
+		echo \$ok
+	" | tr -d '\r' | tail -1)
+	[ "$result" = "1" ]
+}
+
+# ── apply optimizations ───────────────────────────────────────────────────
+
+do_optimize() {
+	local ip="$1"
+	log "$ip: applying optimizations"
+	local output
+	output=$(_ssh "$ip" "
+		echo '=== Wi-Fi country -> $WIFI_COUNTRY ==='
+		cmd wifi force-country-code enabled $WIFI_COUNTRY 2>/dev/null
+		cmd wifi get-country-code 2>/dev/null
+
+		echo '=== scan throttle -> OFF ==='
+		settings put global wifi_scan_throttle_enabled 0 2>/dev/null
+		settings get global wifi_scan_throttle_enabled 2>/dev/null
+
+		echo '=== doze whitelist -> $APP_PKG ==='
+		dumpsys deviceidle whitelist +$APP_PKG 2>/dev/null
+
+		echo '=== rmem_max -> $RMEM ==='
+		sysctl -w net.core.rmem_max=$RMEM 2>/dev/null || echo $RMEM > /proc/sys/net/core/rmem_max
+		echo $RMEM > /proc/sys/net/core/rmem_default 2>/dev/null
+		cat /proc/sys/net/core/rmem_max
+
+		echo '=== done ==='
+	" 2>&1)
+
+	# Verify
+	if is_optimized "$ip"; then
+		log "$ip: optimized successfully"
+		return 0
+	else
+		log "$ip: WARNING — optimization applied but verify failed"
+		return 1
+	fi
+}
+
+# ── mark/check tracking ───────────────────────────────────────────────────
+
+mark_optimized() {
+	echo "$1" >> "$OPTIMIZED_FILE"
+}
+
+is_marked() {
+	[ -f "$OPTIMIZED_FILE" ] && grep -qxF "$1" "$OPTIMIZED_FILE"
+}
+
+# Prune marks for IPs no longer in the lease table (device left)
+prune_stale() {
+	[ -f "$OPTIMIZED_FILE" ] || return 0
+	local tmp="$OPTIMIZED_FILE.tmp"
+	while IFS= read -r ip; do
+		grep -q "$ip" "$LEASE_FILE" 2>/dev/null && echo "$ip"
+	done < "$OPTIMIZED_FILE" > "$tmp"
+	mv "$tmp" "$OPTIMIZED_FILE"
+}
+
+# ── scan cycle ─────────────────────────────────────────────────────────────
+# Reads DHCP leases, probes each client for SSH on 2222.
+
+scan() {
+	[ -f "$LEASE_FILE" ] || return 0
+
+	# lease format: <expiry> <mac> <ip> <hostname> <client-id>
+	while read -r _exp _mac ip _host _cid; do
+		[ -z "$ip" ] && continue
+
+		# Skip if already optimized this session
+		if is_marked "$ip"; then
+			continue
+		fi
+
+		# Fast TCP probe: is port 2222 open?
+		if ! ssh_probe "$ip"; then
+			continue
+		fi
+
+		logd "$ip: SSH reachable — checking optimization state"
+
+		if is_optimized "$ip"; then
+			log "$ip: already optimized — marking"
+			mark_optimized "$ip"
+			continue
+		fi
+
+		# Apply
+		if do_optimize "$ip"; then
+			mark_optimized "$ip"
+		fi
+	done < "$LEASE_FILE"
+}
+
+# ── main ───────────────────────────────────────────────────────────────────
+
+mkdir -p "$STATE_DIR"
+: > "$OPTIMIZED_FILE"
+
+log "started (interval=${SCAN_INTERVAL}s port=${SSH_PORT})"
+
+if [ "$ONCE" = 1 ]; then
+	scan
+	exit 0
+fi
+
+while true; do
+	scan
+	prune_stale
+	sleep "$SCAN_INTERVAL"
+done
