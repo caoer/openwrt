@@ -4,7 +4,7 @@
 #   5 GHz  = AP for PICO VR headset + operator access (EHT80, UNII-3 preferred)
 #   2.4 GHz = STA client to upstream AP (coScene-Robot factory network)
 #
-# SSID = <hostname>-{free|tethered}, switched by glrobot-mode (physical button).
+# SSID = <hostname>-{wireless|umbilical}, switched by glrobot-mode (physical button).
 # Default baked SSID uses hostname "gl-robot"; provision sets per-unit name
 # (e.g. eva-02) and glrobot-mode updates SSID accordingly.
 
@@ -29,12 +29,12 @@ config wifi-device 'radio1'
 	option disabled '0'
 
 # 5 GHz AP — primary link for PICO VR headset and operator WiFi access.
-# SSID set by glrobot-mode: <node>-free (normal) or <node>-tethered (gateway).
+# SSID set by glrobot-mode: <node>-wireless (normal) or <node>-umbilical (gateway).
 config wifi-iface 'ap_5g'
 	option device 'radio1'
 	option mode 'ap'
 	option network 'lan'
-	option ssid 'gl-robot-free'
+	option ssid 'gl-robot-wireless'
 	option encryption 'psk2'
 	option key '66666666'
 	option disabled '0'

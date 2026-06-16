@@ -1,9 +1,9 @@
 #!/bin/sh
 # glrobot-mode — switch the robot router between NORMAL and GATEWAY LAN modes.
 #
-#   NORMAL  : LAN 192.168.8.1/24, standard DHCP (.100+), SSID <node>-free.
+#   NORMAL  : LAN 192.168.8.1/24, standard DHCP (.100+), SSID <node>-wireless.
 #             Provisioning / console default — a fresh router is always reachable here.
-#   GATEWAY : LAN 192.168.123.1/24, SSID <node>-tethered — the router becomes the robot internal segment's
+#   GATEWAY : LAN 192.168.123.1/24, SSID <node>-umbilical — the router becomes the robot internal segment's
 #             gateway (Unitree PCs default-route via .123.1). Adds:
 #               - scoped DHCP .220-.230 (pico gets a dynamic lease; static
 #                 .161/.164/.120 never ask). Router auto-advertised as gateway.
@@ -20,21 +20,27 @@
 #            is already live; gateway still applies.
 
 MODE_FILE=/etc/glrobot.mode
-LED_WHITE=/sys/class/leds/white:status   # normal  (verify node name on golden unit)
-LED_BLUE=/sys/class/leds/blue:status     # gateway
+
+# LED nodes confirmed from device-tree (mt7987a-glinet-gl-mt3600be.dts): two
+# discrete single-color GPIO LEDs, function=status. No RGB — white/blue only.
+LED_WHITE=/sys/class/leds/white:status   # normal  / wireless  mode
+LED_BLUE=/sys/class/leds/blue:status     # gateway / umbilical mode
+LED_BLINK_ON=120     # ms lit  while applying
+LED_BLINK_OFF=120    # ms dark while applying
+LED_SETTLE=3         # seconds to keep flashing after success, then go solid
 
 # --- mode parameters --------------------------------------------------------
 N_LAN=192.168.8.1
 N_DHCP_START=100
 N_DHCP_LIMIT=150
-N_SSID_SUFFIX="free"              # normal mode = standalone AP
+N_SSID_SUFFIX="wireless"          # normal mode = standalone AP (off-cable)
 
 GW_LAN=192.168.123.1
 GW_DHCP_START=220
 GW_DHCP_LIMIT=11                 # .220 - .230
 GW_MGMT_TARGET=192.168.123.164   # PC2 / Orin NX
 GW_MGMT_PORT=2222                # mesh-side port -> :22 on PC2
-GW_SSID_SUFFIX="tethered"        # gateway mode = cabled to robot, AP for PICO
+GW_SSID_SUFFIX="umbilical"       # gateway mode = cabled to robot, AP for PICO
 
 log() { logger -t glrobot-mode "$*"; echo "glrobot-mode: $*"; }
 
@@ -46,7 +52,7 @@ get_node_name() {
 	echo "${hn:-gl-robot}"
 }
 
-set_ssid() {  # $1 = suffix (free|tethered)
+set_ssid() {  # $1 = suffix (wireless|umbilical)
 	local ssid="$(get_node_name)-$1"
 	for iface in ap_5g ap_2g; do
 		uci -q get "wireless.$iface" >/dev/null 2>&1 && \
@@ -54,13 +60,20 @@ set_ssid() {  # $1 = suffix (free|tethered)
 	done
 }
 
-set_led() {  # $1 = active color (white|blue); other goes dark. No-op if LEDs absent.
-	for pair in "white:$LED_WHITE" "blue:$LED_BLUE"; do
-		color="${pair%%:*}"; path="${pair#*:}"
-		[ -w "$path/brightness" ] || continue
-		if [ "$color" = "$1" ]; then echo 255 > "$path/brightness"; else echo 0 > "$path/brightness"; fi
-	done
-}
+# --- LED control ------------------------------------------------------------
+# Two discrete GPIO LEDs (white:status, blue:status). The kernel "timer" trigger
+# does the blinking in-kernel; we only write sysfs. Every helper no-ops if a node
+# is absent, so the script still runs on non-golden hardware.
+led_path()    { case "$1" in white) echo "$LED_WHITE";; blue) echo "$LED_BLUE";; esac; }
+other_color() { [ "$1" = white ] && echo blue || echo white; }
+
+_led_off()   { local p="$1"; [ -d "$p" ] || return 0; echo none  > "$p/trigger" 2>/dev/null; echo 0   > "$p/brightness" 2>/dev/null; }
+_led_solid() { local p="$1"; [ -d "$p" ] || return 0; echo none  > "$p/trigger" 2>/dev/null; echo 255 > "$p/brightness" 2>/dev/null; }
+_led_blink() { local p="$1"; [ -d "$p" ] || return 0; echo timer > "$p/trigger" 2>/dev/null
+	echo "$LED_BLINK_ON" > "$p/delay_on" 2>/dev/null; echo "$LED_BLINK_OFF" > "$p/delay_off" 2>/dev/null; }
+
+set_led()   { _led_solid "$(led_path "$1")"; _led_off "$(led_path "$(other_color "$1")")"; }  # $1 solid, other dark
+blink_led() { _led_blink "$(led_path "$1")"; _led_off "$(led_path "$(other_color "$1")")"; }  # $1 flashing, other dark
 
 apply_normal() {
 	uci -q batch <<-EOF
@@ -101,11 +114,15 @@ esac
 
 uci commit
 echo "$MODE" > "$MODE_FILE"
-[ "$MODE" = gateway ] && set_led blue || set_led white
+ACTIVE=$([ "$MODE" = gateway ] && echo blue || echo white)
+
+# Flash the mode color while settings apply; settle solid LED_SETTLE s after success.
+blink_led "$ACTIVE"
 
 # Apply live. On boot the baked config is already NORMAL (.8.1) and netifd brought it
 # up, so only GATEWAY needs a reload at boot; NORMAL is a no-op reload we skip.
 if [ "$2" = "--boot" ] && [ "$MODE" = normal ]; then
+	set_led "$ACTIVE"   # nothing to apply — straight to solid
 	log "mode=normal (boot, baked default — no reload)"
 	exit 0
 fi
@@ -115,5 +132,10 @@ wifi reload                  2>/dev/null
 /etc/init.d/dnsmasq restart  2>/dev/null
 /etc/init.d/firewall reload  2>/dev/null
 /etc/init.d/sysntpd restart  2>/dev/null
+
+# Success — hold the flash briefly as a visible "done", then settle solid.
+sleep "$LED_SETTLE"
+set_led "$ACTIVE"
+
 SSID="$(get_node_name)-$([ "$MODE" = gateway ] && echo $GW_SSID_SUFFIX || echo $N_SSID_SUFFIX)"
 log "mode=$MODE applied (LAN $([ "$MODE" = gateway ] && echo $GW_LAN || echo $N_LAN), SSID $SSID)"
