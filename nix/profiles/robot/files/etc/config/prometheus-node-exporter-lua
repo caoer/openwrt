@@ -1,0 +1,13 @@
+# Fleet telemetry exporter. Scraped by central VictoriaMetrics on coscene-vm
+# over the EasyTier mesh.
+#
+# listen_interface '*' (bind 0.0.0.0/[::]) — NOT 'loopback' (the package
+# default, 127.0.0.1 only, unreachable from the mesh) and NOT the mesh
+# interface by name: the mesh uci iface is proto 'none' (EasyTier owns the
+# tun0 IP, netifd doesn't), so network_get_ipaddr returns empty and the init
+# would defer-start forever. Bind-all + firewall scoping is the robust path;
+# the firewall drops :9100 from the wan zone so the unauthenticated metrics
+# endpoint stays off the uplink (mesh + lan only).
+config prometheus-node-exporter-lua 'main'
+	option listen_interface '*'
+	option listen_port '9100'

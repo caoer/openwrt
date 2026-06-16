@@ -60,3 +60,14 @@ config rule
 	option dest_port '546'
 	option family 'ipv6'
 	option target 'ACCEPT'
+
+# node-exporter (:9100) is fleet telemetry, scraped over the mesh only. The wan
+# zone is input-ACCEPT (SSH rescue), and the exporter binds 0.0.0.0, so without
+# this the unauthenticated metrics endpoint would be exposed on the wan/wwan
+# uplink. Drop :9100 from wan; lan + mesh zones keep input-ACCEPT and can scrape.
+config rule
+	option name 'Deny-node-exporter-wan'
+	option src 'wan'
+	option proto 'tcp'
+	option dest_port '9100'
+	option target 'DROP'
