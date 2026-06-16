@@ -36,7 +36,7 @@ config wifi-iface 'ap_5g'
 	option network 'lan'
 	option ssid 'gl-robot-free'
 	option encryption 'psk2'
-	option key 't34wafl0smc0'
+	option key '66666666'
 	option disabled '0'
 
 # 2.4 GHz STA — connects to upstream factory AP for internet/management.
