@@ -109,9 +109,20 @@ flash target=default_target mode="keep":
     [ -n "$FW" ] || { echo "ERROR: No firmware image found. Run 'just build' first."; exit 1; }
     echo "Firmware: $FW"
     echo "Target:   root@{{target}}  (mode={{mode}})"
+    LOCAL_SHA=$(sha256sum "$FW" | cut -d' ' -f1)
+    echo "Local SHA256: $LOCAL_SHA"
     echo "Uploading..."
     scp -O "$FW" "root@{{target}}:/tmp/firmware.bin"
-    echo "Verifying image integrity..."
+    echo "Verifying SHA256 on device..."
+    REMOTE_SHA=$(ssh -o ConnectTimeout=10 "root@{{target}}" "sha256sum /tmp/firmware.bin | cut -d' ' -f1")
+    if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
+        echo "ERROR: SHA256 mismatch! Upload corrupted."
+        echo "  local:  $LOCAL_SHA"
+        echo "  remote: $REMOTE_SHA"
+        exit 1
+    fi
+    echo "SHA256 match: $REMOTE_SHA"
+    echo "Verifying image metadata (sysupgrade -T)..."
     ssh -o ConnectTimeout=10 "root@{{target}}" "sysupgrade -T /tmp/firmware.bin"
     echo "Scheduling $SYSUP (fire-and-forget on device)..."
     ssh -o ConnectTimeout=10 "root@{{target}}" "printf '#!/bin/sh\nsleep 5\n$SYSUP /tmp/firmware.bin\n' > /tmp/do-upgrade.sh && chmod +x /tmp/do-upgrade.sh && /tmp/do-upgrade.sh </dev/null >/dev/null 2>&1 &"

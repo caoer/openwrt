@@ -48,8 +48,11 @@ ONCE=0
 
 # ── logging ────────────────────────────────────────────────────────────────
 
-log()  { logger -t pico-opt "$*"; echo "pico-opt: $*"; }
-logd() { logger -t pico-opt "$*"; }  # daemon-quiet (syslog only in loop)
+log() {
+  logger -t pico-opt "$*"
+  echo "pico-opt: $*"
+}
+logd() { logger -t pico-opt "$*"; } # daemon-quiet (syslog only in loop)
 
 # ── SSH transport ──────────────────────────────────────────────────────────
 # OpenWrt ships dbclient (dropbear SSH client). Root on pico = no password,
@@ -57,17 +60,18 @@ logd() { logger -t pico-opt "$*"; }  # daemon-quiet (syslog only in loop)
 # authorized_keys by pico-reroot.sh.
 
 _ssh() {
-	local ip="$1"; shift
-	# -y: accept unknown host keys (pico key changes every re-root)
-	# -T: no PTY (scripted)
-	dbclient -y -T -p "$SSH_PORT" \
-		-o "ConnectTimeout=$SSH_TIMEOUT" \
-		"root@$ip" "$@" 2>/dev/null
+  local ip="$1"
+  shift
+  # -y: accept unknown host keys (pico key changes every re-root)
+  # -T: no PTY (scripted)
+  dbclient -y -T -p "$SSH_PORT" \
+    -o "ConnectTimeout=$SSH_TIMEOUT" \
+    "root@$ip" "$@" 2>/dev/null
 }
 
 # Test if a host is SSH-reachable (fast TCP probe + auth check)
 ssh_probe() {
-	_ssh "$1" "echo ok" | grep -q "ok"
+  _ssh "$1" "echo ok" | grep -q "ok"
 }
 
 # ── optimization checks ───────────────────────────────────────────────────
@@ -75,9 +79,9 @@ ssh_probe() {
 # Each check is a single SSH round-trip for speed.
 
 is_optimized() {
-	local ip="$1"
-	local result
-	result=$(_ssh "$ip" "
+  local ip="$1"
+  local result
+  result=$(_ssh "$ip" "
 		ok=1
 		# 1. country code
 		cc=\$(cmd wifi get-country-code 2>/dev/null)
@@ -92,16 +96,16 @@ is_optimized() {
 		dumpsys deviceidle whitelist 2>/dev/null | grep -q '$APP_PKG' || ok=0
 		echo \$ok
 	" | tr -d '\r' | tail -1)
-	[ "$result" = "1" ]
+  [ "$result" = "1" ]
 }
 
 # ── apply optimizations ───────────────────────────────────────────────────
 
 do_optimize() {
-	local ip="$1"
-	log "$ip: applying optimizations"
-	local output
-	output=$(_ssh "$ip" "
+  local ip="$1"
+  log "$ip: applying optimizations"
+  local output
+  output=$(_ssh "$ip" "
 		echo '=== Wi-Fi country -> $WIFI_COUNTRY ==='
 		cmd wifi force-country-code enabled $WIFI_COUNTRY 2>/dev/null
 		cmd wifi get-country-code 2>/dev/null
@@ -121,85 +125,85 @@ do_optimize() {
 		echo '=== done ==='
 	" 2>&1)
 
-	# Verify
-	if is_optimized "$ip"; then
-		log "$ip: optimized successfully"
-		return 0
-	else
-		log "$ip: WARNING — optimization applied but verify failed"
-		return 1
-	fi
+  # Verify
+  if is_optimized "$ip"; then
+    log "$ip: optimized successfully"
+    return 0
+  else
+    log "$ip: WARNING — optimization applied but verify failed"
+    return 1
+  fi
 }
 
 # ── mark/check tracking ───────────────────────────────────────────────────
 
 mark_optimized() {
-	echo "$1" >> "$OPTIMIZED_FILE"
+  echo "$1" >>"$OPTIMIZED_FILE"
 }
 
 is_marked() {
-	[ -f "$OPTIMIZED_FILE" ] && grep -qxF "$1" "$OPTIMIZED_FILE"
+  [ -f "$OPTIMIZED_FILE" ] && grep -qxF "$1" "$OPTIMIZED_FILE"
 }
 
 # Prune marks for IPs no longer in the lease table (device left)
 prune_stale() {
-	[ -f "$OPTIMIZED_FILE" ] || return 0
-	local tmp="$OPTIMIZED_FILE.tmp"
-	while IFS= read -r ip; do
-		grep -q "$ip" "$LEASE_FILE" 2>/dev/null && echo "$ip"
-	done < "$OPTIMIZED_FILE" > "$tmp"
-	mv "$tmp" "$OPTIMIZED_FILE"
+  [ -f "$OPTIMIZED_FILE" ] || return 0
+  local tmp="$OPTIMIZED_FILE.tmp"
+  while IFS= read -r ip; do
+    grep -q "$ip" "$LEASE_FILE" 2>/dev/null && echo "$ip"
+  done <"$OPTIMIZED_FILE" >"$tmp"
+  mv "$tmp" "$OPTIMIZED_FILE"
 }
 
 # ── scan cycle ─────────────────────────────────────────────────────────────
 # Reads DHCP leases, probes each client for SSH on 2222.
 
 scan() {
-	[ -f "$LEASE_FILE" ] || return 0
+  [ -f "$LEASE_FILE" ] || return 0
 
-	# lease format: <expiry> <mac> <ip> <hostname> <client-id>
-	while read -r _exp _mac ip _host _cid; do
-		[ -z "$ip" ] && continue
+  # lease format: <expiry> <mac> <ip> <hostname> <client-id>
+  while read -r _exp _mac ip _host _cid; do
+    [ -z "$ip" ] && continue
 
-		# Skip if already optimized this session
-		if is_marked "$ip"; then
-			continue
-		fi
+    # Skip if already optimized this session
+    if is_marked "$ip"; then
+      continue
+    fi
 
-		# Fast TCP probe: is port 2222 open?
-		if ! ssh_probe "$ip"; then
-			continue
-		fi
+    # Fast TCP probe: is port 2222 open?
+    if ! ssh_probe "$ip"; then
+      continue
+    fi
 
-		logd "$ip: SSH reachable — checking optimization state"
+    logd "$ip: SSH reachable — checking optimization state"
 
-		if is_optimized "$ip"; then
-			log "$ip: already optimized — marking"
-			mark_optimized "$ip"
-			continue
-		fi
+    if is_optimized "$ip"; then
+      log "$ip: already optimized — marking"
+      mark_optimized "$ip"
+      continue
+    fi
 
-		# Apply
-		if do_optimize "$ip"; then
-			mark_optimized "$ip"
-		fi
-	done < "$LEASE_FILE"
+    # Apply
+    if do_optimize "$ip"; then
+      mark_optimized "$ip"
+    fi
+  done <"$LEASE_FILE"
 }
 
 # ── main ───────────────────────────────────────────────────────────────────
 
 mkdir -p "$STATE_DIR"
-: > "$OPTIMIZED_FILE"
+: >"$OPTIMIZED_FILE"
 
 log "started (interval=${SCAN_INTERVAL}s port=${SSH_PORT})"
 
 if [ "$ONCE" = 1 ]; then
-	scan
-	exit 0
+  scan
+  exit 0
 fi
 
 while true; do
-	scan
-	prune_stale
-	sleep "$SCAN_INTERVAL"
+  scan
+  prune_stale
+  sleep "$SCAN_INTERVAL"
 done
