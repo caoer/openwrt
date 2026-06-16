@@ -3,7 +3,7 @@
 # GL robot router (openwrt `robot` profile) and apply it.
 #
 # Fleet convention (zero lookup):
-#   robot N  ->  jump host coscene-eva-N, mesh IP 10.144.145.N, node eva-N-router
+#   robot N  ->  jump host coscene-eva-N, mesh IP 10.144.146.N, node eva-N
 #   router reached at 192.168.8.1 through the robot's eth0 (ProxyJump).
 #
 # Usage:
@@ -17,7 +17,7 @@ SSID="${2:-coScene-Robot}"
 KEY="${3:-99999999}"
 
 NODE="eva-${N}-router"
-MESH="10.144.145.${N}"
+MESH="10.144.146.${N}"
 JUMP="coscene-eva-${N}"
 ROUTER="192.168.8.1"
 IDENT="${HOME}/.ssh/keys/coscene-dev"
