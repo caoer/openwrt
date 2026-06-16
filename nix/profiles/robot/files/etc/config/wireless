@@ -1,5 +1,12 @@
-# Robot router radios (mt76 / mac80211). 5 GHz = STA uplink to upstream AP.
-# Provision fills the STA ssid/key from /etc/glrobot.conf and enables it.
+# Robot router radios (mt76 / mac80211, GL-MT3600BE MT7987/mt7996e dual-band).
+#
+# Default-baked topology (works out-of-box after any flash):
+#   5 GHz  = AP for PICO VR headset + operator access (EHT80, UNII-3 preferred)
+#   2.4 GHz = management AP (same SSID, fallback for non-5G clients)
+#   STA uplink = disabled; provision enables it per-unit from /etc/glrobot.conf
+#
+# Provision may override SSID/key/channel per-unit. rf-autotune.sh picks the
+# cleanest UNII-3 channel at deploy time.
 
 config wifi-device 'radio0'
 	option type 'mac80211'
@@ -9,19 +16,42 @@ config wifi-device 'radio0'
 	option channel 'auto'
 	option htmode 'HE40'
 	option country 'US'
-	option disabled '1'
+	option disabled '0'
 
 config wifi-device 'radio1'
 	option type 'mac80211'
 	option path 'soc/11280000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
 	option radio '1'
 	option band '5g'
-	option channel 'auto'
+	option channel '149'
 	option htmode 'HE80'
 	option country 'US'
 	option disabled '0'
 
-# STA uplink — disabled until provisioned (ssid/key from seed).
+# 5 GHz AP — primary link for PICO VR headset and operator WiFi access.
+config wifi-iface 'ap_5g'
+	option device 'radio1'
+	option mode 'ap'
+	option network 'lan'
+	option ssid 'coScene-Robot'
+	option encryption 'psk2'
+	option key 't34wafl0smc0'
+	option disabled '0'
+
+# 2.4 GHz AP — management / fallback for non-5G clients.
+config wifi-iface 'ap_2g'
+	option device 'radio0'
+	option mode 'ap'
+	option network 'lan'
+	option ssid 'coScene-Robot'
+	option encryption 'psk2'
+	option key 't34wafl0smc0'
+	option disabled '0'
+
+# STA uplink (5 GHz) — disabled by default. Provision enables it per-unit
+# when the robot needs a wireless upstream (vs wired WAN to 4G/5G CPE).
+# NOTE: enabling this on radio1 alongside ap_5g incurs the single-radio
+# repeater penalty (time-sharing halves throughput). Prefer wired WAN.
 config wifi-iface 'sta_uplink'
 	option device 'radio1'
 	option mode 'sta'
