@@ -39,4 +39,4 @@ config interface 'wwan'
 # EasyTier mesh tun (locus-mesh). Device name pinned so firewall can scope it.
 config interface 'mesh'
 	option proto 'none'
-	option device 'etmesh'
+	option device 'tun0'

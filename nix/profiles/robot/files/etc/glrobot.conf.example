@@ -4,6 +4,7 @@
 
 NODE_NAME="eva-02"
 MESH_IP="10.144.145.2"
+ET_CREDENTIAL="<from sops: et_credential_eva-02>"
 
 # WiFi uplink is BAKED fleet-uniform (factory AP) and enabled by default — no need to
 # set it per-seed. Only override here if THIS unit's uplink differs:

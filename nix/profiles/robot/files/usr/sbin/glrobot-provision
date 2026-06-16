@@ -43,6 +43,13 @@ if [ -n "$WIFI_SSID" ]; then
 	log "STA uplink -> $WIFI_SSID"
 fi
 
+# 4. Mesh credential from seed
+if [ -n "$ET_CREDENTIAL" ]; then
+	echo -n "$ET_CREDENTIAL" > /etc/easytier/credential
+	chmod 600 /etc/easytier/credential
+	log "mesh credential written"
+fi
+
 uci commit
 /etc/init.d/easytier enable 2>/dev/null
 

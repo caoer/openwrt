@@ -1,17 +1,20 @@
 # locus-mesh EasyTier config TEMPLATE for robot routers.
 # Rendered to /etc/easytier/config.toml by /usr/sbin/glrobot-provision,
 # substituting @NODE_NAME@ and @MESH_IP@ from /etc/glrobot.conf.
-# Shared mesh secret + peers are baked (same for every robot router).
 #
-# Peers = the locus-mesh default join set: tcp+udp to the first 2 bootstrap
-# peers in osfiles/lib/osf/mesh.nix (89.208.247.77, 104.224.152.92).
-# 3rd live bootstrap (64.186.236.100, dmit-us-lax-2) available for redundancy.
-# DO NOT re-add 64.186.233.167 / 23.252.105.155 — PAUSED/dead since 2026-06-07.
+# Credential-mode leaf: authenticates via ET_CREDENTIAL env (set in init.d).
+# No network_secret — backbone validates the per-device credential against
+# the credential DB. Credential is baked into /etc/init.d/easytier at flash
+# and updated per-unit by glrobot-provision from /etc/glrobot.conf.
+#
+# CN deployment: raw :11010 CN→US is GFW-dropped. Bootstrap via gateway-cd
+# (Aliyun Chengdu, CN cloud hub) over wss/ws — TLS-framed, DPI-resistant.
+# Also direct-peer with volcengine-sh/gz (CN domestic, no GFW).
 instance_name = "@NODE_NAME@"
 hostname = "@NODE_NAME@"
 ipv4 = "@MESH_IP@/16"
 dhcp = false
-dev_name = "etmesh"
+dev_name = "tun0"
 
 listeners = [
     "tcp://0.0.0.0:11010",
@@ -20,19 +23,27 @@ listeners = [
 
 [network_identity]
 network_name = "locus-mesh"
-network_secret = "JGT/8a725S3tCwARkbedUyy39br+X+D60jgKhw1bHKo="
+
+# gateway-cd (10.144.144.11) — Aliyun Chengdu, CN cloud hub, DPI-resistant
+[[peer]]
+uri = "wss://47.109.42.219:11012/"
 
 [[peer]]
-uri = "tcp://89.208.247.77:11010"
+uri = "ws://47.109.42.219:11011/"
+
+# volcengine-sh (10.144.144.15) — CN domestic, direct reachable
+[[peer]]
+uri = "tcp://14.103.44.144:11010"
 
 [[peer]]
-uri = "udp://89.208.247.77:11010"
+uri = "udp://14.103.44.144:11010"
+
+# volcengine-gz (10.144.144.16) — CN domestic, direct reachable
+[[peer]]
+uri = "tcp://118.145.101.7:11010"
 
 [[peer]]
-uri = "tcp://104.224.152.92:11010"
-
-[[peer]]
-uri = "udp://104.224.152.92:11010"
+uri = "udp://118.145.101.7:11010"
 
 [flags]
 default_protocol = "udp"
@@ -42,6 +53,7 @@ mtu = 1380
 lazy_p2p = true
 multi_thread = true
 multi_thread_count = 2
+disable_sym_hole_punching = true
 
 [file_logger]
 level = "info"

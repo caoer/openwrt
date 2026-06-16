@@ -3,11 +3,21 @@
 START=99
 USE_PROCD=1
 
+# ET_CREDENTIAL is the per-device leaf credential for secure-mode mesh auth.
+# Baked default = empty (unprovisioned). glrobot-provision writes the real
+# credential from /etc/glrobot.conf → ET_CREDENTIAL into this script or
+# a credential file. Until provisioned, EasyTier starts but cannot peer.
+ET_CREDENTIAL_FILE="/etc/easytier/credential"
+
 start_service() {
     mkdir -p /tmp/log/easytier
 
+    local cred=""
+    [ -f "$ET_CREDENTIAL_FILE" ] && cred="$(cat "$ET_CREDENTIAL_FILE")"
+
     procd_open_instance easytier
     procd_set_param command /usr/sbin/easytier-core -c /etc/easytier/config.toml
+    [ -n "$cred" ] && procd_set_param env ET_CREDENTIAL="$cred"
     procd_set_param respawn 3600 5 5
     procd_set_param stdout 1
     procd_set_param stderr 1
