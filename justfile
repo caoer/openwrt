@@ -72,29 +72,61 @@ fetch-singbox version="1.14.0-alpha.2":
 build-full jobs="$(nproc)": fetch-easytier bake-config
     make -j{{jobs}} V=s
 
-# Flash firmware to target (fire-and-forget, agent-safe)
-flash target=default_target:
+# Flash firmware over SSH — agent-safe AND survives operator WiFi/SSH disconnection.
+# Re-execs itself detached (setsid+nohup -> /tmp log), so a dropped link mid-flash
+# cannot abort it; the post-reboot verify reconnects on its own. Two modes:
+#   mode=keep  (default) — config-preserving sysupgrade: keeps /etc/config + the files
+#              listed in /etc/sysupgrade.conf (per-device identity, mode). Unit returns
+#              reachable on the SAME path (WiFi/mesh). Use to re-flash deployed units.
+#   mode=clean — sysupgrade -n: wipes config; new baked image config applies fresh. Unit
+#              self-recovers WiFi via baked STA creds; then re-provision to restore mesh
+#              identity. Reach it via the robot jump host at 192.168.8.1 (mesh id is gone).
+# Usage: just flash <ip> [keep|clean]   (keep = config-preserving, default)
+flash target=default_target mode="keep":
     #!/usr/bin/env bash
     set -euo pipefail
-    FW=$(ls -t {{image_glob}} 2>/dev/null | head -1)
-    if [ -z "$FW" ]; then
-        echo "ERROR: No firmware image found. Run 'just build' first."
-        exit 1
+    # Detach so a WiFi/SSH drop can't kill the flash (run from any host; tmux not required).
+    if [ -z "${FLASH_DETACHED:-}" ]; then
+        LOG="/tmp/flash-{{target}}-$(date +%Y%m%d-%H%M%S).log"
+        echo "Flashing {{target}} (mode={{mode}}) — detaching so a link drop can't abort it."
+        echo "  watch:  tail -f $LOG"
+        # setsid is Linux-only (util-linux); macOS lacks it. nohup alone survives
+        # SIGHUP on a link/terminal drop, which is what we need here.
+        if command -v setsid >/dev/null 2>&1; then
+            FLASH_DETACHED=1 setsid nohup just flash {{target}} {{mode}} >"$LOG" 2>&1 </dev/null &
+        else
+            FLASH_DETACHED=1 nohup just flash {{target}} {{mode}} >"$LOG" 2>&1 </dev/null &
+        fi
+        echo "  detached PID $!"
+        exit 0
     fi
+    case "{{mode}}" in
+        keep)  SYSUP="sysupgrade"    ;;
+        clean) SYSUP="sysupgrade -n" ;;
+        *) echo "ERROR: mode must be 'keep' or 'clean'"; exit 1 ;;
+    esac
+    FW=$(ls -t {{image_glob}} 2>/dev/null | head -1)
+    [ -n "$FW" ] || { echo "ERROR: No firmware image found. Run 'just build' first."; exit 1; }
     echo "Firmware: $FW"
-    echo "Target:   root@{{target}}"
-    echo ""
+    echo "Target:   root@{{target}}  (mode={{mode}})"
     echo "Uploading..."
     scp -O "$FW" "root@{{target}}:/tmp/firmware.bin"
     echo "Verifying image integrity..."
     ssh -o ConnectTimeout=10 "root@{{target}}" "sysupgrade -T /tmp/firmware.bin"
-    echo ""
-    echo "Scheduling sysupgrade (fire-and-forget)..."
-    ssh -o ConnectTimeout=10 "root@{{target}}" 'printf "#!/bin/sh\nsleep 5\nsysupgrade -n /tmp/firmware.bin\n" > /tmp/do-upgrade.sh && chmod +x /tmp/do-upgrade.sh && /tmp/do-upgrade.sh </dev/null >/dev/null 2>&1 &'
-    echo "Sysupgrade scheduled. Waiting 120s for reboot..."
-    sleep 120
-    echo "Checking if device is back..."
-    ssh -o ConnectTimeout=10 "root@{{target}}" "cat /etc/openwrt_release" && echo "SUCCESS" || echo "FAILED — device not responding"
+    echo "Scheduling $SYSUP (fire-and-forget on device)..."
+    ssh -o ConnectTimeout=10 "root@{{target}}" "printf '#!/bin/sh\nsleep 5\n$SYSUP /tmp/firmware.bin\n' > /tmp/do-upgrade.sh && chmod +x /tmp/do-upgrade.sh && /tmp/do-upgrade.sh </dev/null >/dev/null 2>&1 &"
+    echo "Scheduled. Polling for reboot + WiFi reassoc (up to 5 min)..."
+    for i in $(seq 1 30); do
+        sleep 10
+        if ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "root@{{target}}" "cat /etc/openwrt_release" 2>/dev/null; then
+            echo "SUCCESS — {{target}} back after ~$((i*10))s (mode={{mode}})"
+            exit 0
+        fi
+    done
+    echo "FAILED — {{target}} not reachable after 300s."
+    echo "  If mode=clean over mesh: the unit lost its mesh identity — reach it via the"
+    echo "  robot jump host at 192.168.8.1 and re-provision (nix/provision-robot-router.sh N)."
+    exit 1
 
 # Verify flash was successful
 verify target=default_target:
