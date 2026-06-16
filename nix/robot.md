@@ -146,39 +146,22 @@ dmit-us-lax-2) is available for redundancy. **Do not** re-add `64.186.233.167` /
 ### Full provision process
 
 1. **Flash** robot firmware onto the GL-MT3600BE: `just flash <ip> clean`.
-2. **Provision** by running `nix/provision-robot-router.sh <N>` from the operator's
-   machine — e.g. `provision-robot-router.sh 46`.
+2. **Onboard** using `locus-routers/fleet-telemetry/onboard-robot.sh`:
+   ```bash
+   .repos/locus-routers/fleet-telemetry/onboard-robot.sh <node> <mesh-ip> [router-ssh]
+   # e.g. onboard-robot.sh eva-02 10.144.146.2 root@192.168.8.1
+   ```
 
-That script (fleet convention — zero lookup: `robot N` → jump host `coscene-eva-N`,
-mesh IP `10.144.146.N`, node `eva-N-router`):
-- Derives identity from the robot number: `N=46` → node `eva-46-router`, mesh IP
-  `10.144.146.46`.
-- SSHes to the router at `192.168.8.1` via ProxyJump through the coScene robot host
-  (`coscene-eva-46`), using `~/.ssh/keys/coscene-dev`.
-- Writes `/etc/glrobot.conf` with `NODE_NAME`, `MESH_IP`, and WiFi STA creds.
-- Runs `glrobot-provision` on the router, which:
-  - sets the hostname,
-  - renders `config.toml.template` → `config.toml` (substitutes `@NODE_NAME@` /
-    `@MESH_IP@`),
-  - optionally overrides the STA WiFi creds (if `WIFI_SSID` is in the seed),
-  - `uci commit`, enables + starts EasyTier,
-  - reloads network and WiFi.
-
-**Assumption:** the operator reaches the router through the robot's own jump host
-(`ssh -J coscene-eva-N root@192.168.8.1`), not directly — the fleet path. The router
-sits behind the robot's LAN at `192.168.8.1`, reachable via the robot machine that
-has a routable address.
-
-**On-desk shortcut:** if the router is directly reachable (e.g. at `192.168.8.1` over
-`en7`, no jump host), provision it for testing by writing `/etc/glrobot.conf`
-directly and running `glrobot-provision`:
-```bash
-ssh root@192.168.8.1 'cat > /etc/glrobot.conf' <<EOF
-NODE_NAME="eva-46-router"
-MESH_IP="10.144.146.46"
-EOF
-ssh root@192.168.8.1 /usr/sbin/glrobot-provision
-```
+That script:
+- Decrypts the per-node EasyTier credential from sops (`et_credential_<node>`).
+- Writes `/etc/glrobot.conf` with `NODE_NAME`, `MESH_IP`, `ET_CREDENTIAL`, and WiFi
+  STA creds, then runs `glrobot-provision`.
+- Gap-fills what glrobot-provision misses post-boot: reloads hostname into the kernel,
+  re-derives AP ssid via `glrobot-mode`, sets STA uplink on the live sta section(s).
+- Adds the mesh-IP scrape target to `victoria-metrics/prometheus.yml`, deploys to
+  the VM, and verifies the target shows `health=up`.
+- Verifies end to end: kernel hostname, exporter nodename, AP ssid, mesh tun0 IP,
+  node-exporter binding, STA uplink ssid.
 
 `/etc/glrobot.conf` seed format (`glrobot.conf.example`):
 ```

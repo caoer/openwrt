@@ -125,7 +125,7 @@ flash target=default_target mode="keep":
     done
     echo "FAILED — {{target}} not reachable after 300s."
     echo "  If mode=clean over mesh: the unit lost its mesh identity — reach it via the"
-    echo "  robot jump host at 192.168.8.1 and re-provision (nix/provision-robot-router.sh N)."
+    echo "  robot jump host at 192.168.8.1 and re-provision (locus-routers/fleet-telemetry/onboard-robot.sh)."
     exit 1
 
 # Verify flash was successful
