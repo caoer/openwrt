@@ -133,6 +133,10 @@ wifi reload                  2>/dev/null
 /etc/init.d/firewall reload  2>/dev/null
 /etc/init.d/sysntpd restart  2>/dev/null
 
+# Mode switch changes the LAN subnet — all DHCP leases are now stale.
+# Clear pico-optimize-daemon's tracking so it re-probes on the new subnet.
+rm -f /tmp/pico-optimize/optimized 2>/dev/null
+
 # Success — hold the flash briefly as a visible "done", then settle solid.
 sleep "$LED_SETTLE"
 set_led "$ACTIVE"
