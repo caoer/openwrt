@@ -2,10 +2,13 @@
 # Copy to /etc/glrobot.conf (the provision helper writes this from osfiles inventory).
 # Consumed by /usr/sbin/glrobot-provision on first boot and on manual re-run.
 
-NODE_NAME="eva-46-router"
-MESH_IP="10.144.145.46"
-WIFI_SSID="coScene-Robot"
-WIFI_KEY="99999999"
+NODE_NAME="eva-02"
+MESH_IP="10.144.145.2"
+
+# WiFi uplink is BAKED fleet-uniform (factory AP) and enabled by default — no need to
+# set it per-seed. Only override here if THIS unit's uplink differs:
+#WIFI_SSID="coScene-Robot"
+#WIFI_KEY="..."
 
 # LAN IP is NOT set per-seed — it is owned by the mode switch:
 #   NORMAL  mode = 192.168.8.1   (provisioning/console default)

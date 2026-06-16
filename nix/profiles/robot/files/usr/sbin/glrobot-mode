@@ -1,9 +1,9 @@
 #!/bin/sh
 # glrobot-mode — switch the robot router between NORMAL and GATEWAY LAN modes.
 #
-#   NORMAL  : LAN 192.168.8.1/24, standard DHCP (.100+).
+#   NORMAL  : LAN 192.168.8.1/24, standard DHCP (.100+), SSID <node>-free.
 #             Provisioning / console default — a fresh router is always reachable here.
-#   GATEWAY : LAN 192.168.123.1/24 — the router becomes the robot internal segment's
+#   GATEWAY : LAN 192.168.123.1/24, SSID <node>-tethered — the router becomes the robot internal segment's
 #             gateway (Unitree PCs default-route via .123.1). Adds:
 #               - scoped DHCP .220-.230 (pico gets a dynamic lease; static
 #                 .161/.164/.120 never ask). Router auto-advertised as gateway.
@@ -27,14 +27,32 @@ LED_BLUE=/sys/class/leds/blue:status     # gateway
 N_LAN=192.168.8.1
 N_DHCP_START=100
 N_DHCP_LIMIT=150
+N_SSID_SUFFIX="free"              # normal mode = standalone AP
 
 GW_LAN=192.168.123.1
 GW_DHCP_START=220
 GW_DHCP_LIMIT=11                 # .220 - .230
 GW_MGMT_TARGET=192.168.123.164   # PC2 / Orin NX
 GW_MGMT_PORT=2222                # mesh-side port -> :22 on PC2
+GW_SSID_SUFFIX="tethered"        # gateway mode = cabled to robot, AP for PICO
 
 log() { logger -t glrobot-mode "$*"; echo "glrobot-mode: $*"; }
+
+# Build SSID from node name + mode suffix.  Node name comes from provisioned
+# hostname (e.g. "eva-02") falling back to the baked default.
+get_node_name() {
+	local hn
+	hn="$(uci -q get system.@system[0].hostname)"
+	echo "${hn:-gl-robot}"
+}
+
+set_ssid() {  # $1 = suffix (free|tethered)
+	local ssid="$(get_node_name)-$1"
+	for iface in ap_5g ap_2g; do
+		uci -q get "wireless.$iface" >/dev/null 2>&1 && \
+			uci -q set "wireless.$iface.ssid=$ssid"
+	done
+}
 
 set_led() {  # $1 = active color (white|blue); other goes dark. No-op if LEDs absent.
 	for pair in "white:$LED_WHITE" "blue:$LED_BLUE"; do
@@ -52,6 +70,7 @@ apply_normal() {
 		set system.ntp.enable_server=0
 		delete firewall.glrobot_mgmt_ssh
 	EOF
+	set_ssid "$N_SSID_SUFFIX"
 }
 
 apply_gateway() {
@@ -70,6 +89,7 @@ apply_gateway() {
 		set firewall.glrobot_mgmt_ssh.proto=tcp
 		set firewall.glrobot_mgmt_ssh.target=DNAT
 	EOF
+	set_ssid "$GW_SSID_SUFFIX"
 }
 
 MODE="$1"
@@ -91,7 +111,9 @@ if [ "$2" = "--boot" ] && [ "$MODE" = normal ]; then
 fi
 
 /etc/init.d/network reload   2>/dev/null
+wifi reload                  2>/dev/null
 /etc/init.d/dnsmasq restart  2>/dev/null
 /etc/init.d/firewall reload  2>/dev/null
 /etc/init.d/sysntpd restart  2>/dev/null
-log "mode=$MODE applied (LAN $([ "$MODE" = gateway ] && echo $GW_LAN || echo $N_LAN))"
+SSID="$(get_node_name)-$([ "$MODE" = gateway ] && echo $GW_SSID_SUFFIX || echo $N_SSID_SUFFIX)"
+log "mode=$MODE applied (LAN $([ "$MODE" = gateway ] && echo $GW_LAN || echo $N_LAN), SSID $SSID)"
