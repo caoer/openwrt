@@ -11,12 +11,15 @@ config zone
 	option output 'ACCEPT'
 	option forward 'ACCEPT'
 
+# WAN input ACCEPT = rescue mode: plug into WAN port, get SSH access without
+# needing LAN/WiFi. Safe for a robot fleet unit (WAN faces a private 4G/5G CPE
+# or factory LAN, not the open internet). Forward stays DROP.
 config zone
 	option name 'wan'
 	list network 'wan'
 	list network 'wan6'
 	list network 'wwan'
-	option input 'REJECT'
+	option input 'ACCEPT'
 	option output 'ACCEPT'
 	option forward 'DROP'
 	option masq '1'
