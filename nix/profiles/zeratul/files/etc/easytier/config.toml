@@ -1,6 +1,6 @@
 instance_name = "zeratul"
 hostname = "zeratul"
-ipv4 = "10.144.144.140/24"
+ipv4 = "10.56.1.140/16"
 dhcp = false
 
 listeners = [
